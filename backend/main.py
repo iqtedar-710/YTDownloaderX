@@ -1,25 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-
+from fastapi.responses import FileResponse
 import yt_dlp
 import os
 import uuid
-import requests
 
 app = FastAPI()
-from fastapi.middleware.cors import CORSMiddleware
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# ------------------------------------------------
 # CORS
-# ------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,423 +17,215 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DOWNLOAD_DIR = "downloads"
+DOWNLOAD_FOLDER = "downloads"
 
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# ------------------------------------------------
-# YT-DLP OPTIONS
-# ------------------------------------------------
+# FORMAT COUNTS
 
-COMMON_OPTIONS = {
 
-    "quiet": True,
+def format_number(num):
 
-    "noplaylist": True,
+    try:
 
-    "extractor_args": {
-        "youtube": {
-            "player_client": [
-                "web",
-                "android",
-                "tv"
-            ]
-        }
-    }
-}
+        num = int(num)
 
-# ------------------------------------------------
-# VIDEO INFO
-# ------------------------------------------------
+        if num >= 1000000:
+            return f"{num / 1000000:.1f}M"
+
+        if num >= 1000:
+            return f"{num / 1000:.1f}K"
+
+        return str(num)
+
+    except:
+        return "N/A"
+
+
+# HOME ROUTE
+
+
+@app.get("/")
+def home():
+
+    return {"message": "YTDownloaderX Backend Running"}
+
+
+# VIDEO INFO ROUTE
+
 
 @app.get("/info")
-async def get_video_info(url: str):
+def get_video_info(url: str):
 
-if "shorts/" in url:
-    url = url.replace("shorts/", "watch?v=")
-    
     try:
 
-        with yt_dlp.YoutubeDL(
-            COMMON_OPTIONS
-        ) as ydl:
+        # SHORTS FIX
 
-            info = ydl.extract_info(
-                url,
-                download=False
-            )
+        if "shorts/" in url:
+            url = url.replace("shorts/", "watch?v=")
 
-            formats = []
+        ydl_opts = {
+            "quiet": True,
+            "nocheckcertificate": True,
+            "ignoreerrors": True,
+            "no_warnings": True,
+            "extract_flat": False,
 
-            added = set()
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
 
-            for f in info.get(
-                "formats",
-                []
-            ):
+            "extractor_args": {
+                "youtube": {
+                    "skip": ["dash", "hls"],
+                }
+            }
+        }
 
-                height = f.get(
-                    "height"
-                )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-                format_id = f.get(
-                    "format_id"
-                )
-
-                vcodec = f.get(
-                    "vcodec"
-                )
-
-                ext = f.get(
-                    "ext"
-                )
-
-                if (
-
-                    height
-
-                    and
-
-                    height >= 360
-
-                    and
-
-                    vcodec != "none"
-
-                    and
-
-                    ext in [
-                        "mp4",
-                        "webm"
-                    ]
-                ):
-
-                    quality = (
-                        f"{height}p"
-                    )
-
-                    if quality not in added:
-
-                        added.add(
-                            quality
-                        )
-
-                        formats.append({
-
-                            "format_id":
-                            format_id,
-
-                            "quality":
-                            quality
-                        })
-
-            formats = sorted(
-
-                formats,
-
-                key=lambda x:
-                int(
-                    x["quality"]
-                    .replace("p", "")
-                )
-            )
+            info = ydl.extract_info(url, download=False)
 
             return {
-
-                "title":
-                info.get("title"),
-
-                "thumbnail":
-                info.get("thumbnail"),
-
-                "duration":
-                info.get("duration"),
-
-                "channel":
-                info.get("uploader"),
-
-                "views":
-                info.get("view_count"),
-
-                "likes":
-                info.get("like_count"),
-
-                "subscribers":
-                info.get(
-                    "channel_follower_count"
-                ),
-
-                "formats":
-                formats
+                "title": info.get("title"),
+                "thumbnail": info.get("thumbnail"),
+                "channel": info.get("uploader"),
+                "views": format_number(info.get("view_count", 0)),
+                "likes": format_number(info.get("like_count", 0)),
+                "subscribers": format_number(info.get("channel_follower_count", 0)),
             }
 
     except Exception as e:
 
-        return JSONResponse(
-            status_code=500,
+        return {
+            "error": str(e)
+        }
 
-            content={
-                "error": str(e)
-            }
-        )
 
-# ------------------------------------------------
-# VIDEO DOWNLOAD
-# ------------------------------------------------
+# DOWNLOAD VIDEO
+
 
 @app.get("/download")
-async def download_video(
-    url: str,
-    format_id: str
-):
+def download_video(url: str, format_id: str = "best"):
 
     try:
 
-        unique_id = str(
-            uuid.uuid4()
-        )
+        if "shorts/" in url:
+            url = url.replace("shorts/", "watch?v=")
 
-        output_template = (
-            f"{DOWNLOAD_DIR}/"
-            f"{unique_id}.%(ext)s"
-        )
+        unique_id = str(uuid.uuid4())
 
-     ydl_opts = {
-    "quiet": True,
-    "nocheckcertificate": True,
-    "ignoreerrors": True,
-    "no_warnings": True,
-    "extract_flat": False,
-
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9",
-    },
-
-    "extractor_args": {
-        "youtube": {
-            "skip": ["dash", "hls"],
-        }
-    }
-}
-
-        with yt_dlp.YoutubeDL(
-            ydl_opts
-        ) as ydl:
-
-            info = ydl.extract_info(
-                url,
-                download=True
-            )
-
-            downloaded_file = None
-
-            for file in os.listdir(
-                DOWNLOAD_DIR
-            ):
-
-                if file.startswith(
-                    unique_id
-                ):
-
-                    downloaded_file = (
-                        os.path.join(
-                            DOWNLOAD_DIR,
-                            file
-                        )
-                    )
-
-                    break
-
-            if not downloaded_file:
-
-                raise Exception(
-                    "Download failed"
-                )
-
-        return FileResponse(
-
-            path=downloaded_file,
-
-            filename=(
-                f"{info.get('title')}.mp4"
-            ),
-
-            media_type="video/mp4"
-        )
-
-    except Exception as e:
-
-        return JSONResponse(
-            status_code=500,
-
-            content={
-                "error": str(e)
-            }
-        )
-
-# ------------------------------------------------
-# AUDIO DOWNLOAD
-# ------------------------------------------------
-
-@app.get("/audio")
-async def download_audio(
-    url: str,
-    quality: str = "320"
-):
-
-    try:
-
-        unique_id = str(
-            uuid.uuid4()
-        )
-
-        output_template = (
-            f"{DOWNLOAD_DIR}/"
-            f"{unique_id}.%(ext)s"
+        output_path = os.path.join(
+            DOWNLOAD_FOLDER,
+            f"{unique_id}.mp4"
         )
 
         ydl_opts = {
-
-            **COMMON_OPTIONS,
-
-            "format":
-            "bestaudio/best",
-
-            "outtmpl":
-            output_template,
-
-            "postprocessors": [{
-
-                "key":
-                "FFmpegExtractAudio",
-
-                "preferredcodec":
-                "mp3",
-
-                "preferredquality":
-                quality,
-            }],
+            "format": "best",
+            "outtmpl": output_path,
+            "quiet": True,
+            "nocheckcertificate": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0",
+            }
         }
 
-        with yt_dlp.YoutubeDL(
-            ydl_opts
-        ) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            info = ydl.extract_info(
-                url,
-                download=True
-            )
-
-            audio_file = None
-
-            for file in os.listdir(
-                DOWNLOAD_DIR
-            ):
-
-                if file.startswith(
-                    unique_id
-                ):
-
-                    audio_file = (
-                        os.path.join(
-                            DOWNLOAD_DIR,
-                            file
-                        )
-                    )
-
-                    break
-
-            if not audio_file:
-
-                raise Exception(
-                    "Audio conversion failed"
-                )
+            ydl.download([url])
 
         return FileResponse(
-
-            path=audio_file,
-
-            filename=(
-                f"{info.get('title')}.mp3"
-            ),
-
-            media_type="audio/mpeg"
+            output_path,
+            media_type="video/mp4",
+            filename="video.mp4"
         )
 
     except Exception as e:
 
-        return JSONResponse(
-            status_code=500,
+        return {
+            "error": str(e)
+        }
 
-            content={
-                "error": str(e)
-            }
-        )
 
-# ------------------------------------------------
-# THUMBNAIL DOWNLOAD
-# ------------------------------------------------
+# DOWNLOAD AUDIO
 
-@app.get("/thumbnail")
-async def download_thumbnail(
-    url: str
-):
+
+@app.get("/audio")
+def download_audio(url: str):
 
     try:
 
-        with yt_dlp.YoutubeDL(
-            COMMON_OPTIONS
-        ) as ydl:
+        if "shorts/" in url:
+            url = url.replace("shorts/", "watch?v=")
 
-            info = ydl.extract_info(
-                url,
-                download=False
-            )
+        unique_id = str(uuid.uuid4())
 
-            thumbnail_url = (
-                info.get(
-                    "thumbnail"
-                )
-            )
+        output_path = os.path.join(
+            DOWNLOAD_FOLDER,
+            f"{unique_id}.mp3"
+        )
 
-            response = requests.get(
-                thumbnail_url
-            )
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": output_path,
+            "quiet": True,
+            "nocheckcertificate": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0",
+            },
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }]
+        }
 
-            thumbnail_path = (
-                os.path.join(
-                    DOWNLOAD_DIR,
-                    "thumbnail.jpg"
-                )
-            )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            with open(
-                thumbnail_path,
-                "wb"
-            ) as f:
-
-                f.write(
-                    response.content
-                )
+            ydl.download([url])
 
         return FileResponse(
-
-            path=thumbnail_path,
-
-            filename=
-            "thumbnail.jpg",
-
-            media_type=
-            "image/jpeg"
+            output_path,
+            media_type="audio/mpeg",
+            filename="audio.mp3"
         )
 
     except Exception as e:
 
-        return JSONResponse(
-            status_code=500,
+        return {
+            "error": str(e)
+        }
 
-            content={
-                "error": str(e)
+
+# DOWNLOAD THUMBNAIL
+
+
+@app.get("/thumbnail")
+def download_thumbnail(url: str):
+
+    try:
+
+        if "shorts/" in url:
+            url = url.replace("shorts/", "watch?v=")
+
+        ydl_opts = {
+            "quiet": True,
+            "nocheckcertificate": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+            info = ydl.extract_info(url, download=False)
+
+            thumbnail_url = info.get("thumbnail")
+
+            return {
+                "thumbnail": thumbnail_url
             }
-        )
+
+    except Exception as e:
+
+        return {
+            "error": str(e)
+        }
