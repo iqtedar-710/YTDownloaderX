@@ -4,7 +4,6 @@ from fastapi.responses import FileResponse
 import yt_dlp
 import os
 import uuid
-import browser_cookie3
 
 app = FastAPI()
 
@@ -22,8 +21,8 @@ DOWNLOAD_FOLDER = "downloads"
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-
 # FORMAT NUMBERS
+
 
 def format_number(num):
 
@@ -43,33 +42,33 @@ def format_number(num):
         return "N/A"
 
 
-# LOAD COOKIES
+# COMMON YTDLP OPTIONS
 
-try:
-
-    cookies = browser_cookie3.chrome()
-
-except:
-
-    cookies = None
-
-
-# YTDLP OPTIONS
 
 def get_ydl_opts():
 
     return {
+
         "quiet": True,
         "nocheckcertificate": True,
-        "ignoreerrors": True,
+        "ignoreerrors": False,
         "no_warnings": True,
+        "extract_flat": False,
 
-        "cookiefile": None,
+        # BIG FIX
 
-        "cookiesfrombrowser": ("chrome",),
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"]
+            }
+        },
 
         "http_headers": {
-            "User-Agent": "Mozilla/5.0",
+            "User-Agent": (
+                "Mozilla/5.0 (Linux; Android 10; SM-G975F) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Mobile Safari/537.36"
+            ),
             "Accept-Language": "en-US,en;q=0.9",
         }
     }
@@ -77,18 +76,24 @@ def get_ydl_opts():
 
 # HOME ROUTE
 
+
 @app.get("/")
 def home():
 
-    return {"message": "YTDownloaderX Backend Running"}
+    return {
+        "message": "YTDownloaderX Backend Running"
+    }
 
 
 # VIDEO INFO
+
 
 @app.get("/info")
 def get_video_info(url: str):
 
     try:
+
+        # SHORTS FIX
 
         if "shorts/" in url:
             url = url.replace("shorts/", "watch?v=")
@@ -98,20 +103,35 @@ def get_video_info(url: str):
             info = ydl.extract_info(url, download=False)
 
             return {
+
                 "title": info.get("title"),
+
                 "thumbnail": info.get("thumbnail"),
+
                 "channel": info.get("uploader"),
-                "views": format_number(info.get("view_count", 0)),
-                "likes": format_number(info.get("like_count", 0)),
-                "subscribers": format_number(info.get("channel_follower_count", 0)),
+
+                "views": format_number(
+                    info.get("view_count", 0)
+                ),
+
+                "likes": format_number(
+                    info.get("like_count", 0)
+                ),
+
+                "subscribers": format_number(
+                    info.get("channel_follower_count", 0)
+                ),
             }
 
     except Exception as e:
 
-        return {"error": str(e)}
+        return {
+            "error": str(e)
+        }
 
 
 # VIDEO DOWNLOAD
+
 
 @app.get("/download")
 def download_video(url: str):
@@ -131,7 +151,14 @@ def download_video(url: str):
         ydl_opts = get_ydl_opts()
 
         ydl_opts.update({
-            "format": "best",
+
+            "format": (
+                "bestvideo+bestaudio/"
+                "best"
+            ),
+
+            "merge_output_format": "mp4",
+
             "outtmpl": output_path,
         })
 
@@ -147,10 +174,13 @@ def download_video(url: str):
 
     except Exception as e:
 
-        return {"error": str(e)}
+        return {
+            "error": str(e)
+        }
 
 
 # AUDIO DOWNLOAD
+
 
 @app.get("/audio")
 def download_audio(url: str):
@@ -170,8 +200,11 @@ def download_audio(url: str):
         ydl_opts = get_ydl_opts()
 
         ydl_opts.update({
+
             "format": "bestaudio/best",
+
             "outtmpl": output_path,
+
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
@@ -191,13 +224,16 @@ def download_audio(url: str):
 
     except Exception as e:
 
-        return {"error": str(e)}
+        return {
+            "error": str(e)
+        }
 
 
 # THUMBNAIL
 
+
 @app.get("/thumbnail")
-def get_thumbnail(url: str):
+def download_thumbnail(url: str):
 
     try:
 
@@ -214,4 +250,6 @@ def get_thumbnail(url: str):
 
     except Exception as e:
 
-        return {"error": str(e)}
+        return {
+            "error": str(e)
+        }
