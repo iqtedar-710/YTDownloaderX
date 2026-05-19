@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 import yt_dlp
 import os
 import uuid
+import browser_cookie3
 
 app = FastAPI()
 
@@ -21,8 +22,8 @@ DOWNLOAD_FOLDER = "downloads"
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# FORMAT COUNTS
 
+# FORMAT NUMBERS
 
 def format_number(num):
 
@@ -42,8 +43,39 @@ def format_number(num):
         return "N/A"
 
 
-# HOME ROUTE
+# LOAD COOKIES
 
+try:
+
+    cookies = browser_cookie3.chrome()
+
+except:
+
+    cookies = None
+
+
+# YTDLP OPTIONS
+
+def get_ydl_opts():
+
+    return {
+        "quiet": True,
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
+        "no_warnings": True,
+
+        "cookiefile": None,
+
+        "cookiesfrombrowser": ("chrome",),
+
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+    }
+
+
+# HOME ROUTE
 
 @app.get("/")
 def home():
@@ -51,39 +83,17 @@ def home():
     return {"message": "YTDownloaderX Backend Running"}
 
 
-# VIDEO INFO ROUTE
-
+# VIDEO INFO
 
 @app.get("/info")
 def get_video_info(url: str):
 
     try:
 
-        # SHORTS FIX
-
         if "shorts/" in url:
             url = url.replace("shorts/", "watch?v=")
 
-        ydl_opts = {
-            "quiet": True,
-            "nocheckcertificate": True,
-            "ignoreerrors": True,
-            "no_warnings": True,
-            "extract_flat": False,
-
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0",
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-
-            "extractor_args": {
-                "youtube": {
-                    "skip": ["dash", "hls"],
-                }
-            }
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
 
             info = ydl.extract_info(url, download=False)
 
@@ -98,16 +108,13 @@ def get_video_info(url: str):
 
     except Exception as e:
 
-        return {
-            "error": str(e)
-        }
+        return {"error": str(e)}
 
 
-# DOWNLOAD VIDEO
-
+# VIDEO DOWNLOAD
 
 @app.get("/download")
-def download_video(url: str, format_id: str = "best"):
+def download_video(url: str):
 
     try:
 
@@ -121,15 +128,12 @@ def download_video(url: str, format_id: str = "best"):
             f"{unique_id}.mp4"
         )
 
-        ydl_opts = {
+        ydl_opts = get_ydl_opts()
+
+        ydl_opts.update({
             "format": "best",
             "outtmpl": output_path,
-            "quiet": True,
-            "nocheckcertificate": True,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0",
-            }
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
@@ -143,13 +147,10 @@ def download_video(url: str, format_id: str = "best"):
 
     except Exception as e:
 
-        return {
-            "error": str(e)
-        }
+        return {"error": str(e)}
 
 
-# DOWNLOAD AUDIO
-
+# AUDIO DOWNLOAD
 
 @app.get("/audio")
 def download_audio(url: str):
@@ -166,20 +167,17 @@ def download_audio(url: str):
             f"{unique_id}.mp3"
         )
 
-        ydl_opts = {
+        ydl_opts = get_ydl_opts()
+
+        ydl_opts.update({
             "format": "bestaudio/best",
             "outtmpl": output_path,
-            "quiet": True,
-            "nocheckcertificate": True,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0",
-            },
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }]
-        }
+        })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
@@ -193,39 +191,27 @@ def download_audio(url: str):
 
     except Exception as e:
 
-        return {
-            "error": str(e)
-        }
+        return {"error": str(e)}
 
 
-# DOWNLOAD THUMBNAIL
-
+# THUMBNAIL
 
 @app.get("/thumbnail")
-def download_thumbnail(url: str):
+def get_thumbnail(url: str):
 
     try:
 
         if "shorts/" in url:
             url = url.replace("shorts/", "watch?v=")
 
-        ydl_opts = {
-            "quiet": True,
-            "nocheckcertificate": True,
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
 
             info = ydl.extract_info(url, download=False)
 
-            thumbnail_url = info.get("thumbnail")
-
             return {
-                "thumbnail": thumbnail_url
+                "thumbnail": info.get("thumbnail")
             }
 
     except Exception as e:
 
-        return {
-            "error": str(e)
-        }
+        return {"error": str(e)}
