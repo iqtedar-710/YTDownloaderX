@@ -61,6 +61,9 @@ COMMON_OPTIONS = {
 @app.get("/info")
 async def get_video_info(url: str):
 
+if "shorts/" in url:
+    url = url.replace("shorts/", "watch?v=")
+    
     try:
 
         with yt_dlp.YoutubeDL(
@@ -207,19 +210,24 @@ async def download_video(
             f"{unique_id}.%(ext)s"
         )
 
-        ydl_opts = {
+     ydl_opts = {
+    "quiet": True,
+    "nocheckcertificate": True,
+    "ignoreerrors": True,
+    "no_warnings": True,
+    "extract_flat": False,
 
-            **COMMON_OPTIONS,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Language": "en-US,en;q=0.9",
+    },
 
-            "format":
-            f"{format_id}+bestaudio/best",
-
-            "merge_output_format":
-            "mp4",
-
-            "outtmpl":
-            output_template,
+    "extractor_args": {
+        "youtube": {
+            "skip": ["dash", "hls"],
         }
+    }
+}
 
         with yt_dlp.YoutubeDL(
             ydl_opts
